@@ -1,0 +1,159 @@
+---
+title: "Homework 08"
+author: "Your Name"
+output: html_document
+---
+  
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(dplyr)
+library(broom)
+library(readr)
+library(boot)
+library(mosaic)
+setwd("/Users/vineetburugu/Downloads")
+```
+
+## Problem 1: regression warm up
+
+This problem uses linear regression to estimate creatinine clearance based on patient age.
+
+```{r include=FALSE, message=FALSE, warning=FALSE}
+creatinine <- read_csv("creatinine.csv")
+linear_model <- lm(creatclear ~ age, data = creatinine)
+```
+
+### What creatinine clearance rate should we expect for a 55-year-old? Explain briefly (one or two sentences + equations) how you determined this.
+```{r echo=FALSE}
+prediction <- predict(linear_model, newdata = data.frame(age = 55))
+cat("Predicted creatinine clearance rate for a 55-year-old:", prediction, "mL/minute\n")
+```
+With our regression model fitted to the data, we predict the creatinine clearance rate for a 55-year-old using the equation:
+
+\[
+\hat{y} = \beta_0 + \beta_1 \cdot \text{age}
+\]
+
+Substituting in age = 55, we calculate:
+
+\[
+\hat{y} = \text{(Intercept)} + \text{(Slope)} \cdot 55 = 113.72
+\]
+
+Thus, the expected creatinine clearance rate for a 55-year-old is approximately 113.72 mL/min.
+
+### How does creatinine clearance rate change with age? (This should be a single number whose units are ml/minute per year.) Explain briefly (one or two sentences) how you determined this.
+```{r echo=FALSE}
+slope <- coef(linear_model)["age"]
+cat("Slope:", slope, "mL/minute per year\n")
+```
+We find the slope for age from the model, which is just the change in creatinine clearance rate.
+
+### Whose creatinine clearance rate is healthier (higher) for their age: a 40-year-old with a rate of 135, or a 60-year-old with a rate of 112? Explain briefly (a few sentences + equations) how you determined this.
+```{r echo=FALSE}
+# Part C
+res40 <- 135 - predict(linear_model, newdata = data.frame(age = 40))
+res60 <- 112 - predict(linear_model, newdata = data.frame(age = 60))
+```
+Residual formula:
+
+$$
+\text{Residual} = \text{Observed value} - \text{Predicted value}
+$$
+
+For the 40-year-old:
+
+$$
+\text{Residual}_{40} = 135 - \hat{y}_{40} = 135 - (\beta_0 + \beta_1 \cdot 40)
+$$
+
+For the 60-year-old:
+
+$$
+\text{Residual}_{60} = 112 - \hat{y}_{60} = 112 - (\beta_0 + \beta_1 \cdot 60)
+$$
+
+Using the regression model, we obtained:
+
+```{r echo=FALSE}
+cat("40-year-old's residual:", res40, "mL/minute\n")
+cat("60-year-old's residual:", res60, "mL/minute\n")
+```
+
+The 40-year-old has the healthier creatinine clearance rate for their age because the residual for a 40-year-old is higher.
+
+## Problem 2: Modeling disease growth
+
+```{r include=FALSE, message=FALSE, warning=FALSE}
+covid <- read_csv("covid.csv")
+covid <- covid %>% filter(deaths > 0)
+
+italyY <- covid %>%
+  filter(country == "Italy") %>%
+  lm(log(deaths) ~ days_since_first_death, data = .)
+
+spainN <- covid %>%
+  filter(country == "Spain") %>%
+  lm(log(deaths) ~ days_since_first_death, data = .)
+
+italy2 <- coef(italyY)[2]
+spain2 <- coef(spainN)[2]
+
+italy3 <- log(2) / italy2 #dt_it
+spain3 <- log(2) / spain2 #dt_sp
+
+italy_filter <- covid %>% filter(country == "Italy")
+bootstrap_italy <- do(1000) * coef(lm(log(deaths) ~ days_since_first_death, data = resample(italy_filter)))[2]
+
+spain_filter <- covid %>% filter(country == "Spain")
+bootstrap_spain <- do(1000) * coef(lm(log(deaths) ~ days_since_first_death, data = resample(spain_filter)))[2]
+
+confint_i <- confint(bootstrap_italy, level = 0.95)
+confint_s <- confint(bootstrap_spain, level = 0.95)
+
+log_confint_i <- log(2) / confint_i[c("lower", "upper")]
+log_confint_s <- log(2) / confint_s[c("lower", "upper")]
+```
+
+```{r echo=FALSE}
+cat("Italy Growth Rate:", round(italy2, 3), "\n")
+cat("Italy Growth Rate Confidence Interval:", round(confint_i[["lower"]], 3), "-", round(confint_i[["upper"]], 3), "\n")
+cat("Italy Doubling Time:", round(italy3, 1), "\n")
+cat("Italy Doubling Time Confidence Interval:", round(log_confint_i[["upper"]], 1), "-", round(log_confint_i[["lower"]], 1), "\n\n")
+
+cat("Spain Growth Rate:", round(spain2, 3), "\n")
+cat("Spain Growth Rate Confidence Interval:", round(confint_s[["lower"]], 3), "-", round(confint_s[["upper"]], 3), "\n")
+cat("Spain Doubling Time:", round(spain3, 1), "\n")
+cat("Spain Doubling Time Confidence Interval:", round(log_confint_s[["upper"]], 1), "-", round(log_confint_s[["lower"]], 1), "\n")
+```
+
+```{r}
+ggplot(covid, aes(x = days_since_first_death, y = deaths, color = country)) +
+  geom_line() +
+  labs(title = "Reported daily deaths over time",
+       x = "Days since first death",
+       y = "Reported daily deaths",
+       color = "Country")
+```
+
+## Problem 3: Price Elasticity of Milk
+
+```{r include=FALSE, message=FALSE, warning=FALSE}
+milk <- read_csv("milk.csv")
+
+lmodel <- lm(log(sales) ~ log(price), data = milk)
+elasticity <- coef(lmodel)[2]
+
+bootstrap_elasticity <- do(1000) * coef(lm(log(sales) ~ log(price), data = mosaic::resample(milk)))[[2]]
+colnames(bootstrap_elasticity) <- "elasticity"
+
+elasticity_confidence <- confint(bootstrap_elasticity, level = 0.95)
+```
+
+```{r echo=FALSE}
+cat("Price elasticity of demand:", round(elasticity, 3), "\n")
+cat("Confidence Interval for price elasticity of demand:", round(elasticity_confidence[["lower"]], 3), "-", round(elasticity_confidence[["upper"]], 3), "\n")
+```
+
+We estimated the price elasticity of demand by fitting a linear regression model to sales and price data that has been transformed with a log function. This way, we can interpret the slope as elasticity, and we used bootstrapping to generate a confidence interval.
